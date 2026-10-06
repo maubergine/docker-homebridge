@@ -29,13 +29,19 @@ ui_port_check() {
 
 if hb_resolve_service_user; then
   # the ownership is re-applied here, after the setup and userdata scripts have
-  # run, because both of them write to these paths as root
-  if ! hb_fix_permissions /homebridge /opt/homebridge /home/homebridge; then
+  # run, because both of them write to these paths as root. /opt/homebridge is
+  # deliberately left owned by root, see hb_fix_permissions
+  if ! hb_fix_permissions /homebridge /home/homebridge; then
     echo "Failed to set ownership of /homebridge to ${HB_SERVICE_UID}:${HB_SERVICE_GID}; the Homebridge service will run as root."
-  elif ui_port_check; then
-    export USER=homebridge
-    echo "Starting Homebridge as the homebridge user (uid ${HB_SERVICE_UID}, gid ${HB_SERVICE_GID})"
-    exec /command/s6-setuidgid homebridge /opt/homebridge/start.sh
+  else
+    # the chown above will have taken the startup script with it
+    hb_protect_startup_script
+
+    if ui_port_check; then
+      export USER=homebridge
+      echo "Starting Homebridge as the homebridge user (uid ${HB_SERVICE_UID}, gid ${HB_SERVICE_GID})"
+      exec /command/s6-setuidgid homebridge /opt/homebridge/start.sh
+    fi
   fi
 fi
 

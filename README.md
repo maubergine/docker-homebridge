@@ -110,6 +110,8 @@ docker run \
 | Timezone | `environment:`<br/>`- TZ=America/Toronto` | `-e TZ=America/Toronto` | `UTC` | Set timezone ([list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)) |
 | Avahi mDNS | `environment:`<br/>`- ENABLE_AVAHI=1` | `-e ENABLE_AVAHI=1` | `1` | Set to `0` to disable Avahi mDNS service |
 | User / Group | `environment:`<br/>`- PUID=1000`<br/>`- PGID=1000` | `-e PUID=1000 -e PGID=1000` | unset (`root`) | Run the Homebridge service as this user id / group id instead of `root` ([details](#user--group-identifiers-puid--pgid)) |
+| Startup script as root | `environment:`<br/>`- HB_STARTUP_SCRIPT_AS_ROOT=1` | `-e HB_STARTUP_SCRIPT_AS_ROOT=1` | unset | Run `/homebridge/startup.sh` as `root` when `PUID` / `PGID` are set ([details](#user--group-identifiers-puid--pgid)) |
+| Unrestricted sudo | `environment:`<br/>`- HB_SUDO_UNRESTRICTED=1` | `-e HB_SUDO_UNRESTRICTED=1` | unset | Grant the service user full `sudo` instead of the restricted rule set ([details](#user--group-identifiers-puid--pgid)) |
 
 > **Note**: When running with `ENABLE_AVAHI=0`, you can mount the host's mDNS service to enable mDNS usage in the container:
 > ```yaml
@@ -146,25 +148,59 @@ uid=1000(dockeruser) gid=1000(dockergroup) groups=1000(dockergroup)
 
 When `PUID` / `PGID` are set:
 
-* `/homebridge`, `/opt/homebridge` and `/home/homebridge` are chowned to `PUID:PGID` on every start
+* `/homebridge` and `/home/homebridge` are chowned to `PUID:PGID` on every start
 * Homebridge, the Homebridge UI and the plugin install performed on start-up all run as that user
+* `/homebridge/startup.sh` also runs as that user, unless `HB_STARTUP_SCRIPT_AS_ROOT=1` is set
+* `/opt/homebridge` stays owned by `root` - the container sources scripts from there as `root`,
+  and nothing the service user does needs to write to it
 * Setting only one of the two applies the same value to both
 * Setting either to `0` keeps Homebridge running as `root`
 
 Homebridge falls back to running as `root` if:
 
-* the ownership of `/homebridge` or `/opt/homebridge` cannot be changed (for example an NFS
-  volume mounted with `root_squash`)
+* the ownership of `/homebridge` cannot be changed (for example an NFS volume mounted with
+  `root_squash`)
 * the Homebridge UI is configured to listen on a privileged port (`1024` or lower)
 
-> **Note**: while running as the `homebridge` user, that user is granted passwordless `sudo`
-> (via `/etc/sudoers.d/010_homebridge-nopasswd`), which the Homebridge UI needs in order to
-> restart the container and to update Homebridge, the UI and Node.js. Remove it from your
-> [startup script](#-custom-startup-script) with
-> `rm -f /etc/sudoers.d/010_homebridge-nopasswd` if you would rather not have it.
+#### What the service user can do with `sudo`
 
-> **Note**: the custom startup script (`/homebridge/startup.sh`) always runs as `root`. Anything
-> it writes into `/homebridge` should be chowned to `PUID:PGID` by the script itself.
+The Homebridge UI needs a small number of privileged actions, so the service user is granted
+passwordless `sudo` for these commands via
+`/etc/sudoers.d/010_homebridge-nopasswd`:
+
+| Command | Used for |
+|:--------|:---------|
+| `kill 1` | the UI's **Restart Container** action |
+| `kill -9 <pid>` | closing a UI terminal session |
+| `apt-get update` | updating Homebridge, the UI and Node.js |
+| `apt-get install --only-upgrade -y homebridge` | updating Homebridge, the UI and Node.js |
+| `shutdown -r now`, `shutdown -h now` | the UI's restart / shutdown actions |
+
+Set `HB_SUDO_UNRESTRICTED=1` to go back to unrestricted `sudo`, should a future version of the
+Homebridge UI need a command that is not listed above and the `/etc/sudoers.d/010_homebridge-nopasswd` has not been updated.
+To remove `sudo` access entirely, delete the file from your [startup script](#-custom-startup-script) with
+`rm -f /etc/sudoers.d/010_homebridge-nopasswd` - the UI will then be unable to restart the
+container or apply updates.
+
+> **Note**: this restriction does not entirely prevent privilege escalation; `apt-get` runs package
+> maintainer scripts as `root`, so a command in the list above still leads to `root` for anyone
+> who can influence the container's apt sources. However, it does reduce the range of commands an abusive plugin could
+> execute with root privileges.
+
+#### The custom startup script and `root`
+
+When `PUID` / `PGID` are set, `/homebridge/startup.sh` runs as the service user rather than as
+`root`. The script lives on your volume and can be edited from the Homebridge UI, so running it
+as `root` would make write access to `/homebridge` - which every Homebridge plugin has -
+equivalent to `root` on the next container start.
+
+If your startup script needs `root` (installing packages with `apt-get`, writing outside
+`/homebridge`), set `HB_STARTUP_SCRIPT_AS_ROOT=1`. The script is then taken into `root`
+ownership on every start so that the service user cannot modify it, which also means you can
+only edit it as `root` - from the UI terminal with `sudo`, or from the host.
+
+When `PUID` / `PGID` are unset, Homebridge runs as `root` and the startup script does too, as in
+every previous release.
 
 ---
 
@@ -196,6 +232,8 @@ The `startup.sh` script:
 - Runs on every container start
 - Persists across container recreations
 - Can install packages, copy files, or execute custom commands
+- Runs as `root`, unless `PUID` / `PGID` are set - see
+  [the custom startup script and root](#the-custom-startup-script-and-root)
 
 **Example:**
 

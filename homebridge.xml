@@ -34,6 +34,14 @@
       <Name>PGID</Name>
       <Value></Value>
     </Variable>
+    <Variable>
+      <Name>HB_STARTUP_SCRIPT_AS_ROOT</Name>
+      <Value></Value>
+    </Variable>
+    <Variable>
+      <Name>HB_SUDO_UNRESTRICTED</Name>
+      <Value></Value>
+    </Variable>
   </Environment>
   <Data>
     <Volume>

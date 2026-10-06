@@ -82,18 +82,10 @@ if hb_resolve_service_user; then
   groupmod -o -g "${HB_SERVICE_GID}" homebridge
   usermod -o -u "${HB_SERVICE_UID}" -g homebridge homebridge
 
-  # allow the homebridge user to use sudo, which the Homebridge UI needs to
-  # restart the container and to update Homebridge, the UI and Node.js. the rule
-  # is written by uid as well as by name, because the requested uid may be shared
-  # with another account - the "ubuntu" user owns 1000:1000 on Ubuntu 24.04 - in
-  # which case sudo resolves the process to that account instead
-  usermod -a -G sudo homebridge 2> /dev/null
-  printf '%s\n' \
-    "homebridge ALL=(ALL) NOPASSWD: ALL" \
-    "#${HB_SERVICE_UID} ALL=(ALL) NOPASSWD: ALL" \
-    > /etc/sudoers.d/010_homebridge-nopasswd
-  chown root:root /etc/sudoers.d/010_homebridge-nopasswd
-  chmod 0440 /etc/sudoers.d/010_homebridge-nopasswd
+  # allow the homebridge user to run the specific privileged commands the
+  # Homebridge UI needs - restarting the container, applying updates, closing
+  # terminal sessions - and nothing else. see hb_write_sudoers
+  hb_write_sudoers
 
   mkdir -p /home/homebridge
   [ -e /home/homebridge/.bashrc ] || cp /opt/homebridge/bashrc /home/homebridge/.bashrc 2> /dev/null
@@ -129,10 +121,7 @@ if [ -e /homebridge/pnpm-lock.yaml ]; then
 fi
 
 # source the setup script
-if [ -f /opt/homebridge/source-docker.sh ]; then
-  echo "Sourcing /opt/homebridge/source-docker.sh"
-  . "/opt/homebridge/source-docker.sh"
-fi
+hb_source_trusted /opt/homebridge/source-docker.sh
 
 # setup initial package.json with homebridge
 if [ -e /opt/homebridge/package.json ]; then
@@ -196,17 +185,19 @@ fi
 
 
 # source the setup script
-if [ -f /opt/homebridge/source.sh ]; then
-  echo "Sourcing /opt/homebridge/source.sh"
-  . "/opt/homebridge/source.sh"
-fi
+hb_source_trusted /opt/homebridge/source.sh
 
 # take ownership of the paths the service needs to write to, so that the plugin
-# install below - and Homebridge itself - can run as the homebridge user
-if ! hb_fix_permissions /homebridge /opt/homebridge /home/homebridge; then
+# install below - and Homebridge itself - can run as the homebridge user.
+# /opt/homebridge is deliberately left owned by root, see hb_fix_permissions
+if ! hb_fix_permissions /homebridge /home/homebridge; then
   echo "Failed to set ownership of /homebridge to ${HB_SERVICE_UID}:${HB_SERVICE_GID}; the Homebridge service will run as root."
   HB_SERVICE_USER=root
 fi
+
+# the startup script is run as root only when explicitly requested, in which
+# case it must not be writable by the service user
+hb_protect_startup_script
 
 # install plugins
 echo "Installing Homebridge and user plugins, please wait..."
