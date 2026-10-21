@@ -5,8 +5,14 @@ on:
   schedule:
     - cron: '30 1 * * *'
 
+permissions:
+  contents: read
+
 jobs:
   stale:
-    uses: homebridge/.github/.github/workflows/stale.yml@latest
+    permissions:
+      issues: write
+      pull-requests: write
+    uses: homebridge/.github/.github/workflows/stale.yml@e033cad4852d03b7d19d7307aafedea11ed4a216 # latest
     secrets:
       token: ${{ secrets.GITHUB_TOKEN }}

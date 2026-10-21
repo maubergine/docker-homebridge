@@ -6,5 +6,13 @@
   "dependencies": {
     "@homebridge/homebridge-apt-pkg": "2.0.16",
     "ffmpeg-for-homebridge": "2.2.2"
+  },
+  "scripts": {
+    "commitlint": "commitlint",
+    "prepare": "git config core.hooksPath .githooks || true"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.3",
+    "@commitlint/config-conventional": "21.2.3"
   }
 }
