@@ -5,8 +5,14 @@ on:
     types: [opened, reopened, synchronize]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   stale:
-    uses: homebridge/.github/.github/workflows/labeler.yml@latest
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: homebridge/.github/.github/workflows/labeler.yml@e033cad4852d03b7d19d7307aafedea11ed4a216 # latest
     secrets:
       token: ${{ secrets.GITHUB_TOKEN }}

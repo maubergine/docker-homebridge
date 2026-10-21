@@ -30,10 +30,7 @@ concurrency:
   cancel-in-progress: false
   
 permissions:
-  contents: write
-  pull-requests: write
-  checks: read
-  actions: write
+  contents: read
 
 jobs:
   define-matrix:
@@ -44,12 +41,15 @@ jobs:
     steps:
       - name: Set matrix based on trigger
         id: set-matrix
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_STREAM: ${{ github.event.inputs.release_stream }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            if [[ "${{ github.event.inputs.release_stream }}" == "all" ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "$RELEASE_STREAM" == "all" ]]; then
               echo 'matrix={"stream":["stable","beta","alpha","legacy","synology"]}' >> $GITHUB_OUTPUT
             else
-              echo "matrix={\"stream\":[\"${{ github.event.inputs.release_stream }}\"]}" >> $GITHUB_OUTPUT
+              echo "matrix={\"stream\":[\"$RELEASE_STREAM\"]}" >> $GITHUB_OUTPUT
             fi
           else
             # Scheduled run - process stable, beta, legacy, synology and alpha streams
@@ -64,6 +64,11 @@ jobs:
     name: Update ${{ matrix.stream }} Dependencies
     needs: define-matrix
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: read
+      actions: write
     strategy:
       max-parallel: 1
       fail-fast: false
@@ -72,7 +77,7 @@ jobs:
     steps:
       - name: Update Dependencies ${{ matrix.stream }}
         id: homebridge-bot
-        uses: homebridge/dependency-bot@latest
+        uses: homebridge/dependency-bot@04707203462b4d33e2cbe27eba41564531555d0d # latest
         with:
           config_file: '.github/homebridge-dependency-bot-${{ matrix.stream }}.json'
           release_stream: ${{ matrix.stream }}
@@ -85,7 +90,9 @@ jobs:
   
       - name: Checkout repository (for trigger step)
         if: steps.homebridge-bot.outputs.changes_detected == 'true' && steps.homebridge-bot.outputs.auto_merge == 'true'
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Trigger and Wait for ${{ matrix.stream }} Stage 2 Workflow
         if: steps.homebridge-bot.outputs.changes_detected == 'true' && steps.homebridge-bot.outputs.auto_merge == 'true'
